@@ -1,0 +1,248 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Tracewise MongoDB schema reference",
+  "description": "Reference generated from backend/src/models. This is documentation only; Mongoose models remain authoritative and this file is not a MongoDB validator to apply.",
+  "collections": {
+    "users": {
+      "model": "User",
+      "mongoose": { "timestamps": true, "versionKey": false },
+      "relationships": ["workspaceId references workspaces._id"],
+      "indexes": [
+        { "keys": { "email": 1 }, "unique": true },
+        { "keys": { "workspaceId": 1 } }
+      ],
+      "jsonSchema": {
+        "bsonType": "object",
+        "required": ["name", "email", "passwordHash", "workspaceId"],
+        "properties": {
+          "_id": { "bsonType": "objectId", "generatedBy": "Mongoose" },
+          "name": { "bsonType": "string", "maxLength": 100, "mongoose": { "trim": true } },
+          "email": { "bsonType": "string", "maxLength": 254, "mongoose": { "trim": true, "lowercase": true } },
+          "passwordHash": { "bsonType": "string", "mongoose": { "select": false } },
+          "workspaceId": { "bsonType": "objectId", "reference": "workspaces._id" },
+          "role": { "bsonType": "string", "enum": ["owner", "member"], "default": "member" },
+          "avatarUrl": { "bsonType": "string", "maxLength": 1000, "default": "" },
+          "resetTokenHash": { "bsonType": "string", "mongoose": { "select": false } },
+          "resetTokenExpiresAt": { "bsonType": "date", "mongoose": { "select": false } },
+          "emailVerified": { "bsonType": "bool" },
+          "verificationCodeHash": { "bsonType": "string", "mongoose": { "select": false } },
+          "verificationCodeExpiresAt": { "bsonType": "date", "mongoose": { "select": false } },
+          "resetCodeHash": { "bsonType": "string", "mongoose": { "select": false } },
+          "resetCodeExpiresAt": { "bsonType": "date", "mongoose": { "select": false } },
+          "loginCodeHash": { "bsonType": "string", "mongoose": { "select": false } },
+          "loginCodeExpiresAt": { "bsonType": "date", "mongoose": { "select": false } },
+          "loginChallengeHash": { "bsonType": "string", "mongoose": { "select": false } },
+          "createdAt": { "bsonType": "date", "generatedBy": "Mongoose timestamps" },
+          "updatedAt": { "bsonType": "date", "generatedBy": "Mongoose timestamps" }
+        }
+      }
+    },
+    "workspaces": {
+      "model": "Workspace",
+      "mongoose": { "timestamps": true, "versionKey": false },
+      "relationships": ["ownerId references users._id; nullable and defaults to null"],
+      "indexes": [
+        { "keys": { "key": 1 }, "unique": true, "sparse": true },
+        { "keys": { "inviteCode": 1 }, "unique": true }
+      ],
+      "jsonSchema": {
+        "bsonType": "object",
+        "required": ["name", "inviteCode"],
+        "properties": {
+          "_id": { "bsonType": "objectId", "generatedBy": "Mongoose" },
+          "key": { "bsonType": "string" },
+          "name": { "bsonType": "string", "maxLength": 120, "mongoose": { "trim": true } },
+          "description": { "bsonType": "string", "maxLength": 1000, "default": "", "mongoose": { "trim": true } },
+          "ownerId": { "bsonType": ["objectId", "null"], "reference": "users._id", "default": null },
+          "inviteCode": { "bsonType": "string", "mongoose": { "select": false } },
+          "preferences": {
+            "bsonType": "object",
+            "properties": {
+              "theme": { "bsonType": "string", "enum": ["light", "dark", "system"], "default": "dark" },
+              "notifications": { "bsonType": "bool", "default": true },
+              "compactMode": { "bsonType": "bool", "default": false }
+            }
+          },
+          "aiModel": { "bsonType": "string", "maxLength": 120, "default": "gpt-6-astra" },
+          "aiKeyEncrypted": { "bsonType": "string", "mongoose": { "select": false } },
+          "createdAt": { "bsonType": "date", "generatedBy": "Mongoose timestamps" },
+          "updatedAt": { "bsonType": "date", "generatedBy": "Mongoose timestamps" }
+        }
+      }
+    },
+    "requirements": {
+      "model": "Requirement",
+      "mongoose": { "timestamps": true, "versionKey": false },
+      "relationships": ["workspaceId references workspaces._id"],
+      "indexes": [
+        { "keys": { "workspaceId": 1 }, "declaredBy": "path index" },
+        { "keys": { "workspaceId": 1, "requirementId": 1 }, "unique": true }
+      ],
+      "jsonSchema": {
+        "bsonType": "object",
+        "required": ["workspaceId", "requirementId", "title", "description", "type", "priority", "status"],
+        "properties": {
+          "_id": { "bsonType": "objectId", "generatedBy": "Mongoose" },
+          "workspaceId": { "bsonType": "objectId", "reference": "workspaces._id" },
+          "requirementId": { "bsonType": "string", "pattern": "^REQ-[0-9]{3,}$", "mongoose": { "trim": true, "uppercase": true } },
+          "title": { "bsonType": "string", "maxLength": 160, "mongoose": { "trim": true } },
+          "description": { "bsonType": "string", "maxLength": 4000, "mongoose": { "trim": true } },
+          "type": { "bsonType": "string", "enum": ["Functional", "Non-functional"] },
+          "priority": { "bsonType": "string", "enum": ["Low", "Medium", "High", "Critical"] },
+          "status": { "bsonType": "string", "enum": ["Draft", "Approved", "In Progress", "Completed"] },
+          "createdAt": { "bsonType": "date", "generatedBy": "Mongoose timestamps" },
+          "updatedAt": { "bsonType": "date", "generatedBy": "Mongoose timestamps" }
+        }
+      }
+    },
+    "traceabilityrelationships": {
+      "model": "TraceabilityRelationship",
+      "mongoose": { "timestamps": true, "versionKey": false },
+      "relationships": ["workspaceId references workspaces._id", "fromRequirementId and toRequirementId are stable requirementId strings within that workspace"],
+      "indexes": [
+        { "keys": { "workspaceId": 1 }, "declaredBy": "path index" },
+        { "keys": { "workspaceId": 1, "fromRequirementId": 1, "toRequirementId": 1 }, "unique": true }
+      ],
+      "jsonSchema": {
+        "bsonType": "object",
+        "required": ["workspaceId", "fromRequirementId", "toRequirementId", "relationshipType"],
+        "properties": {
+          "_id": { "bsonType": "objectId", "generatedBy": "Mongoose" },
+          "workspaceId": { "bsonType": "objectId", "reference": "workspaces._id" },
+          "fromRequirementId": { "bsonType": "string", "mongoose": { "trim": true, "uppercase": true } },
+          "toRequirementId": { "bsonType": "string", "mongoose": { "trim": true, "uppercase": true } },
+          "relationshipType": { "bsonType": "string", "enum": ["Depends On", "Related To", "Implements"] },
+          "createdAt": { "bsonType": "date", "generatedBy": "Mongoose timestamps" },
+          "updatedAt": { "bsonType": "date", "generatedBy": "Mongoose timestamps" }
+        }
+      }
+    },
+    "testcases": {
+      "model": "TestCase",
+      "mongoose": { "timestamps": true, "versionKey": false },
+      "relationships": ["workspaceId references workspaces._id", "requirementIds contains stable requirementId strings in that workspace"],
+      "indexes": [
+        { "keys": { "workspaceId": 1 }, "declaredBy": "path index" },
+        { "keys": { "workspaceId": 1, "testCaseId": 1 }, "unique": true }
+      ],
+      "jsonSchema": {
+        "bsonType": "object",
+        "required": ["workspaceId", "testCaseId", "title", "description", "requirementIds"],
+        "properties": {
+          "_id": { "bsonType": "objectId", "generatedBy": "Mongoose" },
+          "workspaceId": { "bsonType": "objectId", "reference": "workspaces._id" },
+          "testCaseId": { "bsonType": "string", "pattern": "^TC-[0-9]{3,}$", "mongoose": { "trim": true, "uppercase": true } },
+          "title": { "bsonType": "string", "maxLength": 160, "mongoose": { "trim": true } },
+          "description": { "bsonType": "string", "maxLength": 4000, "mongoose": { "trim": true } },
+          "requirementIds": { "bsonType": "array", "items": { "bsonType": "string", "mongoose": { "trim": true, "uppercase": true } }, "default": [] },
+          "createdAt": { "bsonType": "date", "generatedBy": "Mongoose timestamps" },
+          "updatedAt": { "bsonType": "date", "generatedBy": "Mongoose timestamps" }
+        }
+      }
+    },
+    "impactanalyses": {
+      "model": "ImpactAnalysis",
+      "mongoose": { "timestamps": true, "versionKey": false },
+      "relationships": ["workspaceId references workspaces._id", "requirementId and embedded requirement/test-case IDs are stable string IDs; impact data is a saved snapshot"],
+      "indexes": [
+        { "keys": { "workspaceId": 1 }, "declaredBy": "path index" },
+        { "keys": { "requirementId": 1 }, "declaredBy": "path index" }
+      ],
+      "jsonSchema": {
+        "bsonType": "object",
+        "required": ["workspaceId", "requirementId", "requirementTitle", "requirementDescription", "proposedChange", "counts"],
+        "properties": {
+          "_id": { "bsonType": "objectId", "generatedBy": "Mongoose" },
+          "workspaceId": { "bsonType": "objectId", "reference": "workspaces._id" },
+          "requirementId": { "bsonType": "string" },
+          "requirementTitle": { "bsonType": "string" },
+          "requirementDescription": { "bsonType": "string" },
+          "proposedChange": { "bsonType": "string", "maxLength": 4000, "mongoose": { "trim": true } },
+          "directImpacts": { "bsonType": "array", "default": [], "items": { "$ref": "#/collections/impactanalyses/jsonSchema/$defs/requirementImpact" } },
+          "indirectImpacts": { "bsonType": "array", "default": [], "items": { "$ref": "#/collections/impactanalyses/jsonSchema/$defs/requirementImpact" } },
+          "affectedTestCases": { "bsonType": "array", "default": [], "items": { "$ref": "#/collections/impactanalyses/jsonSchema/$defs/impactedTestCase" } },
+          "graph": { "bsonType": "object", "properties": {
+            "nodes": { "bsonType": "array", "default": [], "items": { "$ref": "#/collections/impactanalyses/jsonSchema/$defs/graphNode" } },
+            "edges": { "bsonType": "array", "default": [], "items": { "$ref": "#/collections/impactanalyses/jsonSchema/$defs/graphEdge" } }
+          } },
+          "counts": { "bsonType": "object", "required": ["affectedRequirements", "affectedTestCases"], "properties": {
+            "affectedRequirements": { "bsonType": "number" },
+            "affectedTestCases": { "bsonType": "number" }
+          } },
+          "assistant": { "bsonType": "object", "$ref": "#/collections/impactanalyses/jsonSchema/$defs/assistantResult", "description": "Optional; Mongoose default is undefined." },
+          "createdAt": { "bsonType": "date", "generatedBy": "Mongoose timestamps" },
+          "updatedAt": { "bsonType": "date", "generatedBy": "Mongoose timestamps" }
+        },
+        "$defs": {
+          "requirementImpact": { "bsonType": "object", "required": ["requirementId", "title", "relationshipType", "reason", "level"], "properties": {
+            "requirementId": { "bsonType": "string" }, "title": { "bsonType": "string" }, "relationshipType": { "bsonType": "string" }, "reason": { "bsonType": "string" }, "level": { "bsonType": "number" }
+          } },
+          "impactedTestCase": { "bsonType": "object", "required": ["testCaseId", "title", "description", "reason"], "properties": {
+            "testCaseId": { "bsonType": "string" }, "title": { "bsonType": "string" }, "description": { "bsonType": "string" }, "requirementIds": { "bsonType": "array", "default": [], "items": { "bsonType": "string" } }, "reason": { "bsonType": "string" }
+          } },
+          "graphNode": { "bsonType": "object", "required": ["requirementId", "title", "level"], "properties": {
+            "requirementId": { "bsonType": "string" }, "title": { "bsonType": "string" }, "level": { "bsonType": "number" }
+          } },
+          "graphEdge": { "bsonType": "object", "required": ["fromRequirementId", "toRequirementId", "relationshipType"], "properties": {
+            "fromRequirementId": { "bsonType": "string" }, "toRequirementId": { "bsonType": "string" }, "relationshipType": { "bsonType": "string" }
+          } },
+          "similarRequirement": { "bsonType": "object", "required": ["requirementId", "title", "description", "score", "reason"], "properties": {
+            "requirementId": { "bsonType": "string" }, "title": { "bsonType": "string" }, "description": { "bsonType": "string" }, "score": { "bsonType": "number", "minimum": 0, "maximum": 100 }, "reason": { "bsonType": "string" }
+          } },
+          "recommendation": { "bsonType": "object", "required": ["kind", "title", "reason"], "properties": {
+            "_id": { "bsonType": "objectId", "generatedBy": "Mongoose subdocument" },
+            "kind": { "bsonType": "string" }, "title": { "bsonType": "string", "maxLength": 180 }, "reason": { "bsonType": "string", "maxLength": 1000 },
+            "referenceIds": { "bsonType": "array", "default": [], "items": { "bsonType": "string" } },
+            "status": { "bsonType": "string", "enum": ["pending", "accepted", "rejected", "edited"], "default": "pending" },
+            "createdAt": { "bsonType": "date", "generatedBy": "Mongoose subdocument timestamps" },
+            "updatedAt": { "bsonType": "date", "generatedBy": "Mongoose subdocument timestamps" }
+          } },
+          "assistantResult": { "bsonType": "object", "required": ["source", "similarityMethod", "summary", "impactExplanation"], "properties": {
+            "source": { "bsonType": "string", "enum": ["fallback", "openai"] }, "model": { "bsonType": "string", "default": "" }, "fallbackReason": { "bsonType": "string", "default": "" },
+            "similarityMethod": { "bsonType": "string" }, "requirementPriority": { "bsonType": "string", "default": "" }, "requirementStatus": { "bsonType": "string", "default": "" },
+            "summary": { "bsonType": "string" }, "impactExplanation": { "bsonType": "string" },
+            "potentialRisks": { "bsonType": "array", "default": [], "items": { "bsonType": "string" } },
+            "similarRequirements": { "bsonType": "array", "default": [], "items": { "$ref": "#/collections/impactanalyses/jsonSchema/$defs/similarRequirement" } },
+            "recommendations": { "bsonType": "array", "default": [], "items": { "$ref": "#/collections/impactanalyses/jsonSchema/$defs/recommendation" } }
+          } }
+        }
+      }
+    },
+    "sessions": {
+      "model": "Session",
+      "mongoose": { "timestamps": true, "versionKey": false },
+      "relationships": ["userId references users._id"],
+      "indexes": [
+        { "keys": { "tokenHash": 1 }, "unique": true },
+        { "keys": { "userId": 1 } },
+        { "keys": { "expiresAt": 1 }, "expireAfterSeconds": 0 }
+      ],
+      "jsonSchema": {
+        "bsonType": "object",
+        "required": ["tokenHash", "userId", "expiresAt"],
+        "properties": {
+          "_id": { "bsonType": "objectId", "generatedBy": "Mongoose" },
+          "tokenHash": { "bsonType": "string" },
+          "userId": { "bsonType": "objectId", "reference": "users._id" },
+          "expiresAt": { "bsonType": "date" },
+          "createdAt": { "bsonType": "date", "generatedBy": "Mongoose timestamps" },
+          "updatedAt": { "bsonType": "date", "generatedBy": "Mongoose timestamps" }
+        }
+      }
+    },
+    "counters": {
+      "model": "Counter",
+      "mongoose": { "timestamps": false, "versionKey": false },
+      "relationships": ["_id is a string sequence key used by the ID-generation service; no MongoDB reference"],
+      "indexes": [],
+      "jsonSchema": {
+        "bsonType": "object",
+        "required": ["_id"],
+        "properties": {
+          "_id": { "bsonType": "string" },
+          "sequence": { "bsonType": "number", "default": 0 }
+        }
+      }
+    }
+  }
+}

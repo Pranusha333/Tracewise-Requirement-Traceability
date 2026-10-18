@@ -1,5 +1,6 @@
 import crypto from 'node:crypto';
 import mongoose from 'mongoose';
+import nodemailer from 'nodemailer';
 import { promisify } from 'node:util';
 import { hashToken, sessionCookieOptions } from '../middleware/requireAuth.js';
 import ImpactAnalysis from '../models/ImpactAnalysis.js';
@@ -100,8 +101,62 @@ async function createSession(user, response, rememberMe = true) {
 
 function makeOtp() { return String(crypto.randomInt(0, 1_000_000)).padStart(6, '0'); }
 
-async function sendOtpEmail(email, code, subject, purpose) {
+function safeEmailErrorCode(error) {
+  return typeof error?.code === 'string' && /^[A-Za-z0-9_.-]{1,64}$/.test(error.code) ? error.code : undefined;
+}
+
+async function sendGmailOtpEmail(email, code, subject, purpose) {
+  const missing = [
+    ...(!process.env.EMAIL_USER ? ['EMAIL_USER'] : []),
+    ...(!process.env.EMAIL_APP_PASSWORD ? ['EMAIL_APP_PASSWORD'] : []),
+    ...(!process.env.EMAIL_FROM ? ['EMAIL_FROM'] : []),
+  ];
+  if (missing.length) {
+    console.error('[auth-email] Gmail SMTP is not configured', { category: 'missing_configuration', missing });
+    throw new ApiError(503, 'Email codes are not configured. Set EMAIL_USER, EMAIL_APP_PASSWORD, and EMAIL_FROM in backend/.env, then try again.');
+  }
+
+  const transporter = nodemailer.createTransport({
+    host: 'smtp.gmail.com',
+    port: 465,
+    secure: true,
+    connectionTimeout: 10000,
+    greetingTimeout: 10000,
+    socketTimeout: 15000,
+    auth: {
+      user: process.env.EMAIL_USER,
+      pass: process.env.EMAIL_APP_PASSWORD.replace(/\s/g, ''),
+    },
+  });
+
+  try {
+    await transporter.sendMail({
+      from: process.env.EMAIL_FROM,
+      to: email,
+      subject,
+      html: `<div style="font-family:Arial,sans-serif;color:#201d39"><h2>${purpose}</h2><p>Your Tracewise verification code is:</p><p style="font-size:32px;font-weight:bold;letter-spacing:8px">${code}</p><p>This code expires in ${OTP_MINUTES} minutes. If you did not request it, you can ignore this email.</p></div>`,
+    });
+  } catch (error) {
+    console.error('[auth-email] Gmail SMTP delivery failed', {
+      category: error?.code === 'EAUTH' ? 'authentication_failed' : 'smtp_delivery_failed',
+      ...(safeEmailErrorCode(error) ? { errorCode: safeEmailErrorCode(error) } : {}),
+      ...(Number.isInteger(error?.responseCode) ? { smtpStatus: error.responseCode } : {}),
+    });
+    throw new ApiError(503, 'We could not send the email code. Check your Gmail SMTP settings and try again.');
+  } finally {
+    transporter.close();
+  }
+}
+
+async function sendResendOtpEmail(email, code, subject, purpose) {
   if (!process.env.RESEND_API_KEY || !process.env.RESEND_FROM_EMAIL) {
+    console.error('[auth-email] Resend is not configured', {
+      category: 'missing_configuration',
+      missing: [
+        ...(!process.env.RESEND_API_KEY ? ['RESEND_API_KEY'] : []),
+        ...(!process.env.RESEND_FROM_EMAIL ? ['RESEND_FROM_EMAIL'] : []),
+      ],
+    });
     throw new ApiError(503, 'Email codes are not configured. Set RESEND_API_KEY and RESEND_FROM_EMAIL in backend/.env, then try again.');
   }
   let result;
@@ -111,11 +166,34 @@ async function sendOtpEmail(email, code, subject, purpose) {
       headers: { Authorization: `Bearer ${process.env.RESEND_API_KEY}`, 'Content-Type': 'application/json' },
       body: JSON.stringify({ from: process.env.RESEND_FROM_EMAIL, to: [email], subject, html: `<div style="font-family:Arial,sans-serif;color:#201d39"><h2>${purpose}</h2><p>Your Tracewise verification code is:</p><p style="font-size:32px;font-weight:bold;letter-spacing:8px">${code}</p><p>This code expires in ${OTP_MINUTES} minutes. If you did not request it, you can ignore this email.</p></div>` }),
     });
-  } catch {
+  } catch (error) {
+    console.error('[auth-email] Resend request could not reach the provider', {
+      category: error?.name === 'TimeoutError' ? 'timeout' : 'network_error',
+      errorType: typeof error?.name === 'string' && /^[A-Za-z0-9_.-]{1,64}$/.test(error.name) ? error.name : 'Error',
+    });
     throw new ApiError(503, 'We could not send the email code. Check your Resend settings and try again.');
   }
-  if (!result.ok) throw new ApiError(503, 'We could not send the email code. Check your Resend settings and try again.');
+  if (!result.ok) {
+    let providerError;
+    try { providerError = await result.json(); } catch { /* Provider returned no JSON error body. */ }
+    const rawCode = providerError?.name ?? providerError?.code ?? providerError?.error;
+    const providerCode = typeof rawCode === 'string' && /^[A-Za-z0-9_.-]{1,64}$/.test(rawCode) ? rawCode : undefined;
+    console.error('[auth-email] Resend rejected the email request', {
+      category: 'provider_rejected',
+      httpStatus: result.status,
+      ...(providerCode ? { providerCode } : {}),
+    });
+    throw new ApiError(503, 'We could not send the email code. Check your Resend settings and try again.');
+  }
   return {};
+}
+
+async function sendOtpEmail(email, code, subject, purpose) {
+  const provider = (process.env.EMAIL_PROVIDER || 'resend').trim().toLowerCase();
+  if (provider === 'gmail') return sendGmailOtpEmail(email, code, subject, purpose);
+  if (provider === 'resend') return sendResendOtpEmail(email, code, subject, purpose);
+  console.error('[auth-email] Unsupported email provider', { category: 'invalid_provider_configuration' });
+  throw new ApiError(500, 'Email provider configuration is invalid. Set EMAIL_PROVIDER to gmail or resend.');
 }
 
 async function issueCode(user, kind, options = {}) {
