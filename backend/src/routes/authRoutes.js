@@ -1,0 +1,23 @@
+import { Router } from 'express';
+import * as controller from '../controllers/authController.js';
+import asyncHandler from '../utils/asyncHandler.js';
+import { requireAuth, requireWorkspaceOwner } from '../middleware/requireAuth.js';
+import { limitAuthAttempts } from '../middleware/limitAuthAttempts.js';
+
+const router = Router();
+router.post('/register', limitAuthAttempts, asyncHandler(controller.register));
+router.post('/verify-email', limitAuthAttempts, asyncHandler(controller.verifyEmail));
+router.post('/resend-verification', limitAuthAttempts, asyncHandler(controller.resendVerification));
+router.post('/login', limitAuthAttempts, asyncHandler(controller.login));
+router.post('/verify-login', limitAuthAttempts, asyncHandler(controller.verifyLogin));
+router.post('/resend-login-code', limitAuthAttempts, asyncHandler(controller.resendLoginCode));
+router.post('/forgot-password', limitAuthAttempts, asyncHandler(controller.forgotPassword));
+router.post('/reset-password', asyncHandler(controller.resetPassword));
+router.get('/me', requireAuth, asyncHandler(controller.session));
+router.post('/logout', requireAuth, asyncHandler(controller.logout));
+router.put('/profile', requireAuth, asyncHandler(controller.updateProfile));
+router.put('/password', requireAuth, asyncHandler(controller.changePassword));
+router.get('/workspace', requireAuth, asyncHandler(controller.workspace));
+router.patch('/workspace', requireAuth, requireWorkspaceOwner, asyncHandler(controller.updateWorkspace));
+router.post('/workspace/invite-code', requireAuth, requireWorkspaceOwner, asyncHandler(controller.rotateInvite));
+export default router;
